@@ -5,8 +5,8 @@ This script handling the training process.
 import argparse
 import math
 import time
+import numpy as np
 
-from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -15,6 +15,8 @@ import transformer.Constants as Constants
 from dataset import TranslationDataset, paired_collate_fn
 from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
+from tqdm import tqdm
+tqdm.monitor_interval = 0
 
 
 def cal_performance(pred, gold, smoothing=False):
@@ -53,7 +55,7 @@ def cal_loss(pred, gold, smoothing):
     return loss
 
 
-def train_epoch(model, training_data, optimizer, device, smoothing):
+def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, smoothing):
     ''' Epoch operation in training phase'''
 
     model.train()
@@ -62,12 +64,24 @@ def train_epoch(model, training_data, optimizer, device, smoothing):
     n_word_total = 0
     n_word_correct = 0
 
-    for batch in tqdm(
-            training_data, mininterval=2,
-            desc='  - (Training)   ', leave=False):
+    for batch in training_data:
         # prepare data
         src_seq, src_pos, tgt_seq, tgt_pos = map(lambda x: x.to(device), batch)
         gold = tgt_seq[:, 1:]
+
+        print(type(src_seq))
+
+        nb_error = np.random.randint(0, 5)  # min(max(epoch - 0, 0), 5) # stoping change in first 5 epoch
+        random_index = np.random.randint(0, 50, (opt.batch_size, nb_error))
+        random_value = np.random.randint(1, unique_char_len, (opt.batch_size, nb_error))
+
+        src_seq = src_seq.cpu().numpy()
+
+        for b in range(opt.batch_size):
+            for d in range(nb_error):
+                src_seq[b, random_index[d, d]] = random_value[b, d]
+        src_seq = torch.tensor(src_seq)
+        print(type(src_seq))
 
         # forward
         optimizer.zero_grad()
@@ -127,7 +141,7 @@ def eval_epoch(model, validation_data, device):
     return loss_per_word, accuracy
 
 
-def train(model, training_data, validation_data, optimizer, device, opt):
+def train(model, training_data, validation_data, optimizer, device, opt, unique_char_len):
     ''' Start training '''
 
     log_train_file = None
@@ -150,20 +164,20 @@ def train(model, training_data, validation_data, optimizer, device, opt):
 
         start = time.time()
         train_loss, train_accu = train_epoch(
-            model, training_data, optimizer, device, smoothing=opt.label_smoothing)
+            opt, model, training_data, optimizer, device, unique_char_len, smoothing=opt.label_smoothing)
         print('  - (Training)   ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, ' \
               'elapse: {elapse:3.3f} min'.format(
             ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu,
             elapse=(time.time() - start) / 60))
 
-        start = time.time()
-        valid_loss, valid_accu = eval_epoch(model, validation_data, device)
-        print('  - (Validation) ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, ' \
-              'elapse: {elapse:3.3f} min'.format(
-            ppl=math.exp(min(valid_loss, 100)), accu=100 * valid_accu,
-            elapse=(time.time() - start) / 60))
+        # start = time.time()
+        # valid_loss, valid_accu = eval_epoch(model, validation_data, device)
+        # print('  - (Validation) ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, ' \
+        #       'elapse: {elapse:3.3f} min'.format(
+        #     ppl=math.exp(min(valid_loss, 100)), accu=100 * valid_accu,
+        #     elapse=(time.time() - start) / 60))
 
-        valid_accus += [valid_accu]
+        # valid_accus += [valid_accu]
 
         model_state_dict = model.state_dict()
         checkpoint = {
@@ -172,23 +186,14 @@ def train(model, training_data, validation_data, optimizer, device, opt):
             'epoch': epoch_i}
 
         if opt.save_model:
-            if opt.save_mode == 'all':
-                model_name = opt.save_model + '_accu_{accu:3.3f}.chkpt'.format(accu=100 * valid_accu)
-                torch.save(checkpoint, model_name)
-            elif opt.save_mode == 'best':
-                model_name = opt.save_model + '.chkpt'
-                if valid_accu >= max(valid_accus):
-                    torch.save(checkpoint, model_name)
-                    print('    - [Info] The checkpoint file has been updated.')
+            model_name = opt.save_model + '_accu_{accu:3.3f}.chkpt'.format(accu=100 * train_accu)
+            torch.save(checkpoint, model_name)
 
-        if log_train_file and log_valid_file:
+        if not (not log_train_file or not log_valid_file):
             with open(log_train_file, 'a') as log_tf, open(log_valid_file, 'a') as log_vf:
                 log_tf.write('{epoch},{loss: 8.5f},{ppl: 8.5f},{accu:3.3f}\n'.format(
                     epoch=epoch_i, loss=train_loss,
                     ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu))
-                log_vf.write('{epoch},{loss: 8.5f},{ppl: 8.5f},{accu:3.3f}\n'.format(
-                    epoch=epoch_i, loss=valid_loss,
-                    ppl=math.exp(min(valid_loss, 100)), accu=100 * valid_accu))
 
 
 def main():
@@ -229,7 +234,7 @@ def main():
     data = torch.load(opt.data)
     opt.max_token_seq_len = data['settings'].max_token_seq_len
 
-    training_data, validation_data = prepare_dataloaders(data, opt)
+    training_data, validation_data, unique_char_len = prepare_dataloaders(data, opt)
 
     opt.src_vocab_size = training_data.dataset.src_vocab_size
     opt.tgt_vocab_size = training_data.dataset.tgt_vocab_size
@@ -241,7 +246,7 @@ def main():
 
     print(opt)
 
-    device = torch.device('cuda' if opt.cuda else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     transformer = Transformer(
         opt.src_vocab_size,
         opt.tgt_vocab_size,
@@ -263,7 +268,7 @@ def main():
             betas=(0.9, 0.98), eps=1e-09),
         opt.d_model, opt.n_warmup_steps)
 
-    train(transformer, training_data, validation_data, optimizer, device, opt)
+    train(transformer, training_data, validation_data, optimizer, device, opt, unique_char_len)
 
 
 def prepare_dataloaders(data, opt):
@@ -288,7 +293,7 @@ def prepare_dataloaders(data, opt):
         num_workers=2,
         batch_size=opt.batch_size,
         collate_fn=paired_collate_fn)
-    return train_loader, valid_loader
+    return train_loader, valid_loader, len(data['dict']['src'])
 
 
 if __name__ == '__main__':

@@ -2,26 +2,39 @@
 import argparse
 import torch
 import transformer.Constants as Constants
+import re
+import observations
+
+text, testfile, valfile = getattr(observations, 'ptb')('data/')
 
 
-def read_instances_from_file(inst_file, max_sent_len, keep_case):
+def preprocess_sentence(w):
+    w = w.lower()
+    w = re.sub("<eos>", " ", w)
+    w = re.sub("<unk>", " ", w)
+
+    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
+    w = re.sub(r"[^a-z?.!,]+", " ", w)
+    w = re.sub(r'[" "]+', " ", w)
+
+    return w
+
+
+text = preprocess_sentence(text)
+
+
+def read_instances_from_file(opt, inst_file, max_sent_len, keep_case):
     ''' Convert file into word seq lists and vocab '''
 
     word_insts = []
     trimmed_sent_count = 0
-    with open(inst_file) as f:
-        for sent in f:
-            if not keep_case:
-                sent = sent.lower()
-            words = sent.split()
-            if len(words) > max_sent_len:
-                trimmed_sent_count += 1
-            word_inst = words[:max_sent_len]
+    for f in range(0, len(text) - 100, 5):
+        word_inst = list(text[f:f + opt.max_word_seq_len])
 
-            if word_inst:
-                word_insts += [[Constants.BOS_WORD] + word_inst + [Constants.EOS_WORD]]
-            else:
-                word_insts += [None]
+        if word_inst:
+            word_insts += [[Constants.BOS_WORD] + word_inst + [Constants.EOS_WORD]]
+        else:
+            word_insts += [None]
 
     print('[Info] Get {} instances from {}'.format(len(word_insts), inst_file))
 
@@ -89,9 +102,9 @@ def main():
 
     # Training set
     train_src_word_insts = read_instances_from_file(
-        opt.train_src, opt.max_word_seq_len, opt.keep_case)
+        opt, opt.train_src, opt.max_word_seq_len, opt.keep_case)
     train_tgt_word_insts = read_instances_from_file(
-        opt.train_tgt, opt.max_word_seq_len, opt.keep_case)
+        opt, opt.train_tgt, opt.max_word_seq_len, opt.keep_case)
 
     if len(train_src_word_insts) != len(train_tgt_word_insts):
         print('[Warning] The training instance count is not equal.')
@@ -105,9 +118,9 @@ def main():
 
     # Validation set
     valid_src_word_insts = read_instances_from_file(
-        opt.valid_src, opt.max_word_seq_len, opt.keep_case)
+        opt, opt.valid_src, opt.max_word_seq_len, opt.keep_case)
     valid_tgt_word_insts = read_instances_from_file(
-        opt.valid_tgt, opt.max_word_seq_len, opt.keep_case)
+        opt, opt.valid_tgt, opt.max_word_seq_len, opt.keep_case)
 
     if len(valid_src_word_insts) != len(valid_tgt_word_insts):
         print('[Warning] The validation instance count is not equal.')
