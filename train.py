@@ -108,11 +108,15 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, w
             for i in input_string:
                 print(i, end='')
             print(' ==>  ')
-            #
-            # input_string = pred[0]
-            # input_string = [idx2char[idx] for idx in input_string.detach().cpu().numpy().argmax(-1)]
-            # for i in input_string:
-            #     print(i, end='')
+
+            print("translates: ")
+            input_string = pred.view(64, 51, 32)[0]
+            input_string = [idx2char[idx] for idx in input_string.detach().cpu().numpy().argmax(-1)]
+
+            for i in range((50)):
+                print(input_string[i], end='')
+            print('\n')
+
 
         if writer:
             writer.add_scalar("training/loss", loss.cpu().item(), global_counter)
@@ -197,6 +201,8 @@ def train(model, training_data, validation_data, optimizer, device, opt, unique_
               'elapse: {elapse:3.3f} min'.format(
             ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu,
             elapse=(time.time() - start) / 60))
+        writer.add_scalar("training/ppl", math.exp(min(train_loss, 100)), epoch_i)
+        writer.add_scalar("training/ppl", 100 * train_accu, epoch_i)
 
         # start = time.time()
         # valid_loss, valid_accu = eval_epoch(model, validation_data, device)
@@ -222,6 +228,7 @@ def train(model, training_data, validation_data, optimizer, device, opt, unique_
                 log_tf.write('{epoch},{loss: 8.5f},{ppl: 8.5f},{accu:3.3f}\n'.format(
                     epoch=epoch_i, loss=train_loss,
                     ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu))
+
 
 
 def main():
