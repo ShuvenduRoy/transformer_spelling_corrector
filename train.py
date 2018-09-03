@@ -64,24 +64,20 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, s
     n_word_total = 0
     n_word_correct = 0
 
-    for batch in training_data:
+    for batch in tqdm(training_data):
         # prepare data
         src_seq, src_pos, tgt_seq, tgt_pos = map(lambda x: x.to(device), batch)
         gold = tgt_seq[:, 1:]
 
-        print(type(src_seq))
-
         nb_error = np.random.randint(0, 5)  # min(max(epoch - 0, 0), 5) # stoping change in first 5 epoch
         random_index = np.random.randint(0, 50, (opt.batch_size, nb_error))
-        random_value = np.random.randint(1, unique_char_len, (opt.batch_size, nb_error))
+        random_value = torch.randint(1, unique_char_len, (opt.batch_size, nb_error))
 
-        src_seq = src_seq.cpu().numpy()
+        # src_seq = src_seq.cpu().numpy()
 
         for b in range(opt.batch_size):
             for d in range(nb_error):
                 src_seq[b, random_index[d, d]] = random_value[b, d]
-        src_seq = torch.tensor(src_seq)
-        print(type(src_seq))
 
         # forward
         optimizer.zero_grad()
