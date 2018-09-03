@@ -19,6 +19,7 @@ from transformer.Optim import ScheduledOptim
 
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
+
 tqdm.monitor_interval = 0
 
 
@@ -66,11 +67,19 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, w
     total_loss = 0
     n_word_total = 0
     n_word_correct = 0
+    global global_counter
 
     for batch in tqdm(training_data):
         # prepare data
         src_seq, src_pos, tgt_seq, tgt_pos = map(lambda x: x.to(device), batch)
         gold = tgt_seq[:, 1:]
+
+        if global_counter % 1000 == 0:
+            print()
+            input_string = [idx2char[idx] for idx in src_seq.cpu().numpy()[0]]
+            for i in input_string:
+                print(i, end='')
+            print(' ==>  ')
 
         nb_error = np.random.randint(0, 5)  # min(max(epoch - 0, 0), 5) # stoping change in first 5 epoch
         random_index = np.random.randint(0, 50, (opt.batch_size, nb_error))
@@ -90,7 +99,21 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, w
         loss, n_correct = cal_performance(pred, gold, smoothing=smoothing)
         loss.backward()
 
-        global global_counter
+        if global_counter % 1000 == 0:
+            # model.save_state_dict('model.pt')
+            torch.save(model.state_dict(), './model.pt')
+            global idx2char
+
+            input_string = [idx2char[idx] for idx in src_seq.cpu().numpy()[0]]
+            for i in input_string:
+                print(i, end='')
+            print(' ==>  ')
+            #
+            # input_string = pred[0]
+            # input_string = [idx2char[idx] for idx in input_string.detach().cpu().numpy().argmax(-1)]
+            # for i in input_string:
+            #     print(i, end='')
+
         if writer:
             writer.add_scalar("training/loss", loss.cpu().item(), global_counter)
             writer.add_scalar("training/accuracy", n_correct, global_counter)
@@ -244,6 +267,9 @@ def main():
 
     # ========= Loading Dataset =========#
     data = torch.load(opt.data)
+    global idx2char
+    idx2char = {v: k for k, v in data['dict']['src'].items()}
+
     opt.max_token_seq_len = data['settings'].max_token_seq_len
 
     training_data, validation_data, unique_char_len = prepare_dataloaders(data, opt)
@@ -273,6 +299,12 @@ def main():
         n_layers=opt.n_layers,
         n_head=opt.n_head,
         dropout=opt.dropout).to(device)
+
+    try:
+        transformer.load_state_dict(torch.load('./model.pt'))
+        print("Model loaded successfully.......")
+    except:
+        pass
 
     optimizer = ScheduledOptim(
         optim.Adam(

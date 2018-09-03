@@ -104,3 +104,4 @@ ENV/
 .idea/
 data/
 logs/
+*.pt
