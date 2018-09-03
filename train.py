@@ -113,7 +113,8 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, w
             input_string = pred.view(64, 51, 32)[0]
             input_string = [idx2char[idx] for idx in input_string.detach().cpu().numpy().argmax(-1)]
 
-            for i in range((50)):
+            print('<s>',end='')
+            for i in range((51)):
                 print(input_string[i], end='')
             print('\n')
 
