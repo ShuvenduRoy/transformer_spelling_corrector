@@ -2,6 +2,7 @@
 This script handling the training process.
 """
 
+import os
 import argparse
 import math
 import time
@@ -15,6 +16,8 @@ import transformer.Constants as Constants
 from dataset import TranslationDataset, paired_collate_fn
 from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
+
+from tensorboardX import SummaryWriter
 from tqdm import tqdm
 tqdm.monitor_interval = 0
 
@@ -55,7 +58,7 @@ def cal_loss(pred, gold, smoothing):
     return loss
 
 
-def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, smoothing):
+def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, writer, smoothing):
     ''' Epoch operation in training phase'''
 
     model.train()
@@ -86,6 +89,12 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, s
         # backward
         loss, n_correct = cal_performance(pred, gold, smoothing=smoothing)
         loss.backward()
+
+        global global_counter
+        if writer:
+            writer.add_scalar("training/loss", loss.cpu().item(), global_counter)
+            writer.add_scalar("training/accuracy", n_correct, global_counter)
+        global_counter += 1
 
         # update parameters
         optimizer.step_and_update_lr()
@@ -137,7 +146,7 @@ def eval_epoch(model, validation_data, device):
     return loss_per_word, accuracy
 
 
-def train(model, training_data, validation_data, optimizer, device, opt, unique_char_len):
+def train(model, training_data, validation_data, optimizer, device, opt, unique_char_len, writer):
     ''' Start training '''
 
     log_train_file = None
@@ -160,7 +169,7 @@ def train(model, training_data, validation_data, optimizer, device, opt, unique_
 
         start = time.time()
         train_loss, train_accu = train_epoch(
-            opt, model, training_data, optimizer, device, unique_char_len, smoothing=opt.label_smoothing)
+            opt, model, training_data, optimizer, device, unique_char_len, writer, smoothing=opt.label_smoothing)
         print('  - (Training)   ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, ' \
               'elapse: {elapse:3.3f} min'.format(
             ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu,
@@ -216,6 +225,7 @@ def main():
     parser.add_argument('-proj_share_weight', action='store_true')
 
     parser.add_argument('-log', default=None)
+    parser.add_argument('-tensorboard', default=None)
     parser.add_argument('-save_model', default=None)
     parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='best')
 
@@ -225,6 +235,12 @@ def main():
     opt = parser.parse_args()
     opt.cuda = not opt.no_cuda
     opt.d_word_vec = opt.d_model
+    global global_counter
+    global_counter = 0
+
+    writer = None
+    if opt.tensorboard:
+        writer = SummaryWriter(os.path.join('./logs', opt.tensorboard))
 
     # ========= Loading Dataset =========#
     data = torch.load(opt.data)
@@ -264,7 +280,7 @@ def main():
             betas=(0.9, 0.98), eps=1e-09),
         opt.d_model, opt.n_warmup_steps)
 
-    train(transformer, training_data, validation_data, optimizer, device, opt, unique_char_len)
+    train(transformer, training_data, validation_data, optimizer, device, opt, unique_char_len, writer)
 
 
 def prepare_dataloaders(data, opt):

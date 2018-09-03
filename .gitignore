@@ -103,3 +103,4 @@ ENV/
 .mypy_cache/
 .idea/
 data/
+logs/
