@@ -82,12 +82,12 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, w
             print(' ==>  ')
 
         nb_error = np.random.randint(0, 5)  # min(max(epoch - 0, 0), 5) # stoping change in first 5 epoch
-        random_index = np.random.randint(0, 50, (opt.batch_size, nb_error))
-        random_value = torch.randint(1, unique_char_len, (opt.batch_size, nb_error))
+        random_index = np.random.randint(0, 50, (src_seq.size()[0], nb_error))
+        random_value = torch.randint(1, unique_char_len, (src_seq.size()[0], nb_error))
 
         # src_seq = src_seq.cpu().numpy()
 
-        for b in range(opt.batch_size):
+        for b in range(src_seq.size()[0]):
             for d in range(nb_error):
                 src_seq[b, random_index[d, d]] = random_value[b, d]
 
@@ -203,7 +203,7 @@ def train(model, training_data, validation_data, optimizer, device, opt, unique_
             ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu,
             elapse=(time.time() - start) / 60))
         writer.add_scalar("training/ppl", math.exp(min(train_loss, 100)), epoch_i)
-        writer.add_scalar("training/ppl", 100 * train_accu, epoch_i)
+        writer.add_scalar("training/epoch_acc", 100 * train_accu, epoch_i)
 
         # start = time.time()
         # valid_loss, valid_accu = eval_epoch(model, validation_data, device)
