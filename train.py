@@ -101,7 +101,7 @@ def train_epoch(opt, model, training_data, optimizer, device, unique_char_len, w
 
         if global_counter % 1000 == 0:
             # model.save_state_dict('model.pt')
-            torch.save(model.state_dict(), './model.pt')
+            torch.save(model.state_dict(), './checkpoints/model.pt')
             global idx2char
 
             input_string = [idx2char[idx] for idx in src_seq.cpu().numpy()[0]]
@@ -222,7 +222,7 @@ def train(model, training_data, validation_data, optimizer, device, opt, unique_
 
         if opt.save_model:
             model_name = opt.save_model + '_accu_{accu:3.3f}.chkpt'.format(accu=100 * train_accu)
-            torch.save(checkpoint, model_name)
+            torch.save(checkpoint, os.path.join('checkpoints',model_name))
 
         if not (not log_train_file or not log_valid_file):
             with open(log_train_file, 'a') as log_tf, open(log_valid_file, 'a') as log_vf:
@@ -255,7 +255,7 @@ def main():
     parser.add_argument('-embs_share_weight', action='store_true')
     parser.add_argument('-proj_share_weight', action='store_true')
 
-    parser.add_argument('-log', default=None)
+    parser.add_argument('-log', default='default')
     parser.add_argument('-tensorboard', default=None)
     parser.add_argument('-save_model', default=None)
     parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='best')
@@ -309,7 +309,7 @@ def main():
         dropout=opt.dropout).to(device)
 
     try:
-        transformer.load_state_dict(torch.load('./model.pt'))
+        transformer.load_state_dict(torch.load('./checkpoints/model.pt'))
         print("Model loaded successfully.......")
     except:
         pass
